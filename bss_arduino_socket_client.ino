@@ -1,3 +1,5 @@
+#include <SocketIoClient.h>
+
 #include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
 #include "SSD1306.h" // alias for `#include "SSD1306Wire.h"`
 #include "images.h"
@@ -10,6 +12,8 @@
 #define OFF 1
 const char* ssid = "anonymous357";
 const char* password = "_n@1234567980";
+
+SocketIoClient webSocket;
 
 ESP8266WebServer server(80);
 
@@ -50,6 +54,10 @@ void drawText(String text){
 void drawString(int16_t x, int16_t y, String text){
   display.drawString(x, y, text);
   display.display();
+}
+
+void event(const char * payload, size_t length) {
+  Serial.printf("got message: %s\n", payload);
 }
 
 void setup() {
@@ -102,6 +110,11 @@ void setup() {
   digitalWrite(led, ON);
   drawString(0, 40, "HTTP server started");
   Serial.println("HTTP server started");
+
+
+  
+    webSocket.on("event", event);
+    webSocket.begin("192.168.1.2", 3000);
   
 }
 
