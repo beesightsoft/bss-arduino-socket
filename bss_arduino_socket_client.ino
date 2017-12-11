@@ -1,4 +1,4 @@
-
+#include <WebSocketsServer.h>
 #include <WebSocketsClient.h>
 #include <Hash.h>
 
@@ -20,6 +20,7 @@ ESP8266WebServer server(80);
 SSD1306  display(0x3c, 4, 5);
 
 WebSocketsClient webSocket;
+WebSocketsServer wss = WebSocketsServer(81);
 
 const int led = 16;
 
@@ -57,7 +58,42 @@ void drawString(int16_t x, int16_t y, String text){
   display.display();
 }
 
-void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+void webSocketServerEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+
+    switch(type) {
+        case WStype_DISCONNECTED:
+            Serial.printf("[%u] Disconnected!\n", num);
+            break;
+        case WStype_CONNECTED:
+            {
+                IPAddress ip = wss.remoteIP(num);
+                Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
+        
+        // send message to client
+        wss.sendTXT(num, "Connected");
+            }
+            break;
+        case WStype_TEXT:
+            Serial.printf("[%u] get Text: %s\n", num, payload);
+
+            // send message to client
+            // webSocket.sendTXT(num, "message here");
+
+            // send data to all connected clients
+            // webSocket.broadcastTXT("message here");
+            break;
+        case WStype_BIN:
+            Serial.printf("[%u] get binary length: %u\n", num, length);
+            hexdump(payload, length);
+
+            // send message to client
+            // webSocket.sendBIN(num, payload, length);
+            break;
+    }
+
+}
+
+void webSocketClientEvent(WStype_t type, uint8_t * payload, size_t length) {
 
   switch(type) {
     case WStype_DISCONNECTED:
@@ -137,11 +173,13 @@ void setup() {
   drawString(0, 40, "HTTP server started");
   Serial.println("HTTP server started");
 
+  wss.begin();
+  wss.onEvent(webSocketServerEvent);
 
   // server address, port and URL
-  webSocket.begin("192.168.0.101", 3000, "/");
+  webSocket.begin("192.168.0.101", 82, "/");
   // event handler
-  webSocket.onEvent(webSocketEvent);
+  webSocket.onEvent(webSocketClientEvent);
   // try ever 5000 again if connection has failed
   webSocket.setReconnectInterval(5000);
   
@@ -150,6 +188,8 @@ void setup() {
 void loop() {
 
   server.handleClient();
+
+  wss.loop();
   
   webSocket.loop();
   delay(10);
