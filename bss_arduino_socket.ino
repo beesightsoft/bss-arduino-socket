@@ -5,46 +5,31 @@
 #include <Wire.h>  // Only needed for Arduino 1.6.5 and earlier
 #include "SSD1306.h" // alias for `#include "SSD1306Wire.h"`
 #include "images.h"
-
 #include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
+#include <ArduinoJson.h>
 
 #define ON 0 
 #define OFF 1
 const char* ssid = "anonymous357";
 const char* password = "_n@1234567980";
 
-ESP8266WebServer server(80);
-
 SSD1306  display(0x3c, 4, 5);
 
-WebSocketsClient webSocket;
 WebSocketsServer wss = WebSocketsServer(81);
+WebSocketsClient webSocket;
+
+bool socketClientRequest = false;
+bool socketClientInit = false;
 
 const int led = 16;
 
-void handleRoot() {
-  digitalWrite(led, OFF);
-  server.send(200, "text/plain", "hello from esp8266!");
-  digitalWrite(led, ON);
-}
-
-void handleNotFound(){
-  digitalWrite(led, OFF);
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET)?"GET":"POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  for (uint8_t i=0; i<server.args(); i++){
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+JsonObject& parseJSON(String json) {
+  StaticJsonBuffer<200> jsonBuffer;
+  JsonObject& root = jsonBuffer.parseObject(json);
+  if (!root.success()) {
+    Serial.println("parseObject() failed");
   }
-  server.send(404, "text/plain", message);
-  digitalWrite(led, ON);
+  return root;
 }
 
 void drawText(String text){
@@ -69,8 +54,8 @@ void webSocketServerEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
                 IPAddress ip = wss.remoteIP(num);
                 Serial.printf("[%u] Connected from %d.%d.%d.%d url: %s\n", num, ip[0], ip[1], ip[2], ip[3], payload);
         
-        // send message to client
-        wss.sendTXT(num, "Connected");
+                // send message to client
+                wss.sendTXT(num, "Connected");
             }
             break;
         case WStype_TEXT:
@@ -90,7 +75,6 @@ void webSocketServerEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t 
             // webSocket.sendBIN(num, payload, length);
             break;
     }
-
 }
 
 void webSocketClientEvent(WStype_t type, uint8_t * payload, size_t length) {
@@ -120,8 +104,23 @@ void webSocketClientEvent(WStype_t type, uint8_t * payload, size_t length) {
       // webSocket.sendBIN(payload, length);
       break;
   }
-
 }
+
+void setupSocketClient(String host, uint16_t port, String url = "/") {
+  if(socketClientRequest) {
+    if(!socketClientInit) {
+      // server address, port and URL
+      webSocket.begin(address, port, url);
+      // event handler
+      webSocket.onEvent(webSocketClientEvent);
+      // try ever 5000 again if connection has failed
+      webSocket.setReconnectInterval(5000);
+    } else {
+      webSocket.loop();  
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println();
@@ -154,35 +153,12 @@ void setup() {
   // Display info on LCD
   drawString(0, 10, String("SSID: " + String(ssid)));
   drawString(0, 20, String("IP: " + WiFi.localIP().toString()));
-  
-  if (MDNS.begin("esp8266")) {
-    drawString(0, 30, "MDNS responder started");
-    Serial.println("MDNS responder started");
-  }
 
-  server.on("/", handleRoot);
-
-  server.on("/inline", [](){
-    server.send(200, "text/plain", "this works as well");
-  });
-
-  server.onNotFound(handleNotFound);
-
-  server.begin();
   digitalWrite(led, ON);
-  drawString(0, 40, "HTTP server started");
-  Serial.println("HTTP server started");
 
   wss.begin();
   wss.onEvent(webSocketServerEvent);
 
-  // server address, port and URL
-  webSocket.begin("192.168.0.101", 82, "/");
-  // event handler
-  webSocket.onEvent(webSocketClientEvent);
-  // try ever 5000 again if connection has failed
-  webSocket.setReconnectInterval(5000);
-  
 }
 
 void loop() {
@@ -191,6 +167,6 @@ void loop() {
 
   wss.loop();
   
-  webSocket.loop();
+
   delay(10);
 }
